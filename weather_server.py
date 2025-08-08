@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 import xmltodict
 import httpx
 from mcp.server.fastmcp import FastMCP
+import sys  # stderr 출력을 위해 sys 모듈을 임포트합니다.
 
 mcp = FastMCP("my_korea_weather")
 
@@ -181,7 +182,21 @@ async def get_current_weather(lat: float, lon: float) -> str:
 """
     return result
 
-if __name__ == "__main__":
-    print("MCP 날씨 정보 서버 시작... (종료하려면 Ctrl+C)")
-    print("테스트 메시지를 JSON-RPC 형식으로 입력하세요.")
+def main():
+    # --- 1. 환경 변수 체크 (가장 중요) ---
+    api_key = os.environ.get('KOREA_WEATHER_API_KEY')
+    if not api_key or api_key == '<your_api_key>':
+        # 표준 에러로 명확한 오류 메시지를 출력하고 종료합니다.
+        print("치명적 오류: KOREA_WEATHER_API_KEY 환경 변수가 설정되지 않았습니다.", file=sys.stderr)
+        # 0이 아닌 코드로 종료하여 실패했음을 알립니다.
+        sys.exit(1)
+
+    # --- 2. print 문을 stderr로 변경 ---
+    # 이제 이 메시지는 통신에 영향을 주지 않습니다.
+    print("MCP 메인 날씨 서버 [my_korea_weather] 시작...", file=sys.stderr)
+    
+    # 이제 모든 준비가 끝났으니 서버를 실행합니다.
     mcp.run(transport='stdio')
+
+if __name__ == "__main__":
+    main()
