@@ -10,6 +10,3 @@ dependencies = [
     "requests>=2.32.4",
     "xmltodict>=0.14.2",
 ]
-
-[project.scripts]
-weather-server-run = "my_weather.weather_server:main"
