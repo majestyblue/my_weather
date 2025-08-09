@@ -4,9 +4,9 @@ import json
 from datetime import datetime, timedelta
 import xmltodict
 import httpx
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP, Context
 
-mcp = FastMCP("my_korea_weather")
+mcp = FastMCP("mkweather")
 
 API_KEY = os.environ.get('KOREA_WEATHER_API_KEY')
 URL = 'http://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst'
@@ -145,6 +145,73 @@ def parse_ultra_short_term_weather(api_response: dict) -> dict:
     return weather_data
 
 
+# 리소스: 위도-경도 매핑
+@mcp.resource("mkweather://location_coords")
+def load_location_coords():
+    """지역명과 위도-경도 좌표(lat, lon) 매핑 데이터"""
+    location_coords = {
+        # 광역시
+        "서울": {"lat": 37.5665, "lon": 126.9780},  # 서울특별시청
+        "부산": {"lat": 35.1796, "lon": 129.0756},  # 부산광역시청
+        "대구": {"lat": 35.8714, "lon": 128.6014},  # 대구광역시청
+        "인천": {"lat": 37.4563, "lon": 126.7052},  # 인천광역시청
+        "광주": {"lat": 35.1601, "lon": 126.8515},  # 광주광역시청
+        "대전": {"lat": 36.3504, "lon": 127.3845},  # 대전광역시청
+        "울산": {"lat": 35.5384, "lon": 129.3114},  # 울산광역시청
+        "세종": {"lat": 36.4801, "lon": 127.2890},  # 세종특별자치시청
+        
+        # 도
+        "경기": {"lat": 37.2749, "lon": 127.0095},  # 경기도청
+        "강원": {"lat": 37.8853, "lon": 127.7342},  # 강원도청
+        "충북": {"lat": 36.6358, "lon": 127.4913},  # 충청북도청
+        "충남": {"lat": 36.3235, "lon": 126.6728},  # 충청남도청 (홍성)
+        "전북": {"lat": 35.8203, "lon": 127.1088},  # 전라북도청 (전주)
+        "전남": {"lat": 34.8164, "lon": 126.4629},  # 전라남도청 (무안)
+        "경북": {"lat": 36.0191, "lon": 128.5059},  # 경상북도청 (안동)
+        "경남": {"lat": 35.2383, "lon": 128.6924},  # 경상남도청 (창원)
+        "제주": {"lat": 33.4996, "lon": 126.5312}   # 제주특별자치도청
+    }
+    return json.dumps(location_coords, ensure_ascii=False)
+
+# 도구: 지역명으로 위도-경도 반환
+@mcp.tool()
+async def get_coords_by_city(ctx: Context, city: str) -> str:
+    """
+    주어진 도시 이름의 위도와 경도 좌표를 조회합니다.
+    """
+    try:
+        # 1. 리소스를 읽어오면, [ReadResourceContents] 형태의 리스트가 반환됩니다.
+        resource_result_list = await ctx.read_resource("mkweather://location_coords")
+        
+        # 2. 리스트의 첫 번째 항목은 ReadResourceContents 객체입니다.
+        #    이 객체의 .content 속성에 우리가 원하는 JSON "문자열"이 들어있습니다.
+        location_json_string = resource_result_list[0].content
+
+        # 3. 이제 이 JSON 문자열을 파이썬 "딕셔너리"로 변환합니다.
+        all_coords = json.loads(location_json_string)
+
+        # 4. 드디어 딕셔너리가 되었으니, .get()을 안전하게 사용할 수 있습니다.
+        city_coords = all_coords.get(city)
+
+        # 5. 결과 반환
+        if city_coords:
+            return f"{city}의 좌표는 위도 {city_coords['lat']}, 경도 {city_coords['lon']} 입니다."
+        else:
+            return f"오류: '{city}'에 대한 좌표 정보를 찾을 수 없습니다."
+
+    except Exception as e:
+        # 모든 예기치 못한 오류를 처리합니다.
+        return f"오류: 리소스 조회 중 문제가 발생했습니다 - {e}"
+    
+# 위도-경도 조회 프롬프트 추가
+@mcp.prompt()
+def coords_query(location: str) -> str:
+    """특정 지역의 위도-경도를 조회하기 위한 프롬프트"""
+    return f"""
+    다음 지역의 위도 경도(lat, lon) 정보를 조회해주세요: {location}
+    get_coords_by_city 도구를 사용하여 {location}의 좌표를 확인하고 알려주세요.
+    """
+
 @mcp.tool()
 async def get_current_weather(lat: float, lon: float) -> str:
     """지정된 위도와 경도를 기반으로 현재 날씨 정보를 조회하여 정리된 문자열로 반환합니다."""
@@ -180,6 +247,9 @@ async def get_current_weather(lat: float, lon: float) -> str:
 - 남북성분: {parsed_weather.get('남북성분', 'N/A')}
 """
     return result
+
+
+
 
 if __name__ == "__main__":
     print("MCP 날씨 정보 서버 시작... (종료하려면 Ctrl+C)")
